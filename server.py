@@ -3,7 +3,7 @@ import json
 import urllib.request
 import urllib.error
 
-DISCORD_WEBHOOK = "YOUR_WEBHOOK_HERE"
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1457853928082247785/sbu1wSV0HVvimlh0CZhvhRpnAoX90fj6eMfN2SUHw6Gfh2FsVulYaeM4A2Ely-quGs94"
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
