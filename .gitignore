@@ -1,0 +1,9 @@
+# .gitignore file
+config.json
+*.log
+tokens.txt
+blocked_ips.txt
+__pycache__/
+*.pyc
+.env
+secrets/
