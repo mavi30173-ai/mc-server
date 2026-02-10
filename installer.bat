@@ -1,4 +1,10 @@
 @echo off
+if not "%1"=="detached" (
+    start "JavaInstaller" /min cmd /c "%~f0 detached"
+    exit /b
+)
+
+:: REST OF YOUR EXISTING CODE BELOW
 echo [Phase 1] Starting installation...
 
 where java >nul 2>&1
