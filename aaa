@@ -1,1 +1,1 @@
-*/3 * * * * /root/donut/restart.sh
+echo "*/3 * * * * /root/donut/restart.sh" | crontab -
